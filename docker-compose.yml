@@ -24,6 +24,10 @@ services:
       dockerfile: ./distribution/Dockerfile-config
     volumes:
       - config:/config
+    # The one-shot config initializer does not need an address on the service network.
+    network_mode: none
+    # Podman requires dependencies to stay running, even after a successful init.
+    command: /bin/sh -c "while sleep 1000; do :; done"
   composer:
     image: local/osbuild-composer
     build:
@@ -41,13 +45,15 @@ services:
       ]
     volumes:
       - config:/etc/osbuild-composer
+      - ./test/data/composer/osbuild-composer-tls.toml:/etc/osbuild-composer/osbuild-composer.toml:ro,z
       - weldr:/run/weldr
       - dnf-json:/run/osbuild-dnf-json
     networks:
       net:
         ipv4_address: 172.30.0.10
     depends_on:
-      - create-config
+      create-config:
+        condition: service_started
   worker:
     image: local/osbuild-worker
     build:
@@ -62,6 +68,7 @@ services:
     volumes:
       - config:/etc/osbuild-composer
       - dnf-json:/run/osbuild-dnf-json
+      - /var/lib/osbuild-worker-cache:/var/cache/osbuild-worker
     environment:
       - CACHE_DIRECTORY=/var/cache/osbuild-worker
     privileged: true
@@ -73,8 +80,8 @@ services:
       net:
         ipv4_address: 172.30.0.20
     depends_on:
-      - "create-config"
-      - "composer"
+      composer:
+        condition: service_started
 
 networks:
   net:

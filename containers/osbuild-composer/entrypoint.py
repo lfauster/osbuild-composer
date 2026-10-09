@@ -8,13 +8,42 @@ a container.
 
 import argparse
 import contextlib
+import errno
 import os
 import pathlib
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import time
+
+
+def _remove_stale_socket(path):
+    """Remove a Unix socket only if no process is listening on it."""
+    try:
+        entry = os.lstat(path)
+    except FileNotFoundError:
+        return
+
+    if not stat.S_ISSOCK(entry.st_mode):
+        return
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+        try:
+            probe.connect(path)
+        except OSError as exc:
+            if exc.errno != errno.ECONNREFUSED:
+                raise
+        else:
+            return
+
+    try:
+        current = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if (entry.st_dev, entry.st_ino) == (current.st_dev, current.st_ino):
+        os.unlink(path)
 
 
 class Cli(contextlib.AbstractContextManager):
@@ -191,7 +220,20 @@ class Cli(contextlib.AbstractContextManager):
             print("Create weldr-api socket", file=sys.stderr)
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self._exitstack.enter_context(contextlib.closing(sock))
+            _remove_stale_socket("/run/weldr/api.socket")
             sock.bind("/run/weldr/api.socket")
+            sock.listen()
+            sockets.append(sock)
+            names.append("osbuild-composer.socket")
+
+            assert(sock.fileno() == index)
+            index += 1
+
+            print("Create local cloudapi socket", file=sys.stderr)
+            os.makedirs("/run/cloudapi", exist_ok=True)
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self._exitstack.enter_context(contextlib.closing(sock))
+            sock.bind("/run/cloudapi/api.socket")
             sock.listen()
             sockets.append(sock)
             names.append("osbuild-composer.socket")

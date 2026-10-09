@@ -1,4 +1,4 @@
-FROM fedora:40 AS builder
+FROM fedora:44 AS builder
 ENV GOBIN=/opt/app-root/src/go/bin
 # extra packages are needed
 # to compile osbuild
@@ -11,7 +11,7 @@ RUN go install ./cmd/osbuild-worker
 
 FROM fedora
 RUN dnf update -y && dnf upgrade -y
-RUN dnf install -y libxcrypt-compat qemu-img osbuild osbuild-ostree
+RUN dnf install -y libxcrypt-compat qemu-img osbuild osbuild-ostree osbuild-depsolve-dnf
 RUN mkdir -p "/usr/libexec/osbuild-composer"
 RUN mkdir -p "/etc/osbuild-composer/"
 RUN mkdir -p "/run/osbuild-composer/"
